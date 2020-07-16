@@ -67,7 +67,8 @@ static void usage() {
            "    -B, --bind        <B>  Bind src ip                \n"
            "                                                      \n"
            "  Numeric arguments may include a SI unit (1k, 1M, 1G)\n"
-           "  Time arguments may include a time unit (2s, 2m, 2h)\n");
+           "  Time arguments may include a time unit (2s, 2m, 2h) \n"
+		   );
 }
 
 int main(int argc, char **argv) {
@@ -544,6 +545,12 @@ static int parse_args(struct config *cfg, char **url, struct http_parser_url *pa
                 break;
             case 'v':
                 printf("wrk %s [%s] ", VERSION, aeGetApiName());
+				printf( " base version: 0896020a2a28b84b1150e9b60933b746fe1dc761\n"
+						" add some features: "
+						"    1. bind ip"
+						"    2. set cipher"
+						"    3. no ssl session reuse"
+					);
                 printf("Copyright (C) 2012 Will Glozer\n");
                 break;
             case 'h':
