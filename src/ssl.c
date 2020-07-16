@@ -8,7 +8,7 @@
 
 #include "ssl.h"
 
-SSL_CTX *ssl_init() {
+SSL_CTX *ssl_init(char *cipher) {
     SSL_CTX *ctx = NULL;
 
     SSL_load_error_strings();
@@ -20,6 +20,14 @@ SSL_CTX *ssl_init() {
         SSL_CTX_set_verify_depth(ctx, 0);
         SSL_CTX_set_mode(ctx, SSL_MODE_AUTO_RETRY);
         SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_CLIENT);
+    }
+
+    if (NULL != cipher) {
+        if (SSL_CTX_set_cipher_list(ctx,cipher)) {
+            printf("[success] set cipher success: %s\n", cipher);
+        } else {
+            printf("[error] set cipher fail: %s\n", cipher);
+        }
     }
 
     return ctx;
@@ -40,8 +48,9 @@ status ssl_connect(connection *c, char *host) {
 }
 
 status ssl_close(connection *c) {
-    SSL_shutdown(c->ssl);
+    // clear first then shutdown, so it will no reuse ssl session next time
     SSL_clear(c->ssl);
+    SSL_shutdown(c->ssl);
     return OK;
 }
 

@@ -3,6 +3,11 @@
 #include "wrk.h"
 #include "script.h"
 #include "main.h"
+//#include <sys/socket.h>
+//#include <netinet/in.h>
+//#include <arpa/inet.h>
+//#include <sys/types.h>
+//#include <sys/socket.h>
 
 static struct config {
     uint64_t connections;
@@ -16,6 +21,8 @@ static struct config {
     char    *host;
     char    *script;
     SSL_CTX *ctx;
+    char    *cipher;
+    char    *bindip;
 } cfg;
 
 static struct {
@@ -41,6 +48,8 @@ static void handler(int sig) {
     stop = 1;
 }
 
+static char *bindip = NULL;
+
 static void usage() {
     printf("Usage: wrk <options> <url>                            \n"
            "  Options:                                            \n"
@@ -53,6 +62,9 @@ static void usage() {
            "        --latency          Print latency statistics   \n"
            "        --timeout     <T>  Socket/request timeout     \n"
            "    -v, --version          Print version details      \n"
+           "    -C, --cipher      <C>  Set cipher list for        \n"
+           "                           connection                 \n"
+           "    -B, --bind        <B>  Bind src ip                \n"
            "                                                      \n"
            "  Numeric arguments may include a SI unit (1k, 1M, 1G)\n"
            "  Time arguments may include a time unit (2s, 2m, 2h)\n");
@@ -73,7 +85,7 @@ int main(int argc, char **argv) {
     char *service = port ? port : schema;
 
     if (!strncmp("https", schema, 5)) {
-        if ((cfg.ctx = ssl_init()) == NULL) {
+        if ((cfg.ctx = ssl_init(cfg.cipher)) == NULL) {
             fprintf(stderr, "unable to initialize SSL\n");
             ERR_print_errors_fp(stderr);
             exit(1);
@@ -236,12 +248,20 @@ void *thread_main(void *arg) {
 static int connect_socket(thread *thread, connection *c) {
     struct addrinfo *addr = thread->addr;
     struct aeEventLoop *loop = thread->loop;
+    struct sockaddr_in localaddr;
     int fd, flags;
 
     fd = socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
 
     flags = fcntl(fd, F_GETFL, 0);
     fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
+    if (bindip != NULL) {
+        localaddr.sin_family = AF_INET;
+        localaddr.sin_addr.s_addr = inet_addr(bindip);
+        localaddr.sin_port = 0;
+        bind(fd, (struct sockaddr *)&localaddr, sizeof(struct sockaddr));
+    }
 
     if (connect(fd, addr->ai_addr, addr->ai_addrlen) == -1) {
         if (errno != EINPROGRESS) goto error;
@@ -474,6 +494,8 @@ static struct option longopts[] = {
     { "header",      required_argument, NULL, 'H' },
     { "latency",     no_argument,       NULL, 'L' },
     { "timeout",     required_argument, NULL, 'T' },
+    { "cipher",      required_argument, NULL, 'C' },
+    { "bind",        required_argument, NULL, 'B' },
     { "help",        no_argument,       NULL, 'h' },
     { "version",     no_argument,       NULL, 'v' },
     { NULL,          0,                 NULL,  0  }
@@ -489,7 +511,7 @@ static int parse_args(struct config *cfg, char **url, struct http_parser_url *pa
     cfg->duration    = 10;
     cfg->timeout     = SOCKET_TIMEOUT_MS;
 
-    while ((c = getopt_long(argc, argv, "t:c:d:s:H:T:Lrv?", longopts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "t:c:d:s:H:T:C:B:Lrv?", longopts, NULL)) != -1) {
         switch (c) {
             case 't':
                 if (scan_metric(optarg, &cfg->threads)) return -1;
@@ -512,6 +534,13 @@ static int parse_args(struct config *cfg, char **url, struct http_parser_url *pa
             case 'T':
                 if (scan_time(optarg, &cfg->timeout)) return -1;
                 cfg->timeout *= 1000;
+                break;
+            case 'C':
+                cfg->cipher = optarg;
+                break;
+            case 'B':
+                cfg->bindip = optarg;
+                bindip = optarg;
                 break;
             case 'v':
                 printf("wrk %s [%s] ", VERSION, aeGetApiName());
